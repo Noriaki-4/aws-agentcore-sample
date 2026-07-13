@@ -14,7 +14,8 @@ dependencies = [
     "botocore[crt] >= 1.35.0",
     "mcp >= 1.19.0",
     "strands-agents >= 1.15.0",
-    
+    # SigV4-signed MCP transport, used to reach the IAM-authenticated AgentCore Gateway.
+    "mcp-proxy-for-aws >= 1.6.3",
 ]
 
 [tool.hatch.build.targets.wheel]

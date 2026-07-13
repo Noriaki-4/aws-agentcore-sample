@@ -15,7 +15,24 @@
       "codeLocation": "app/BedrockAgent/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
-      "protocol": "HTTP"
+      "protocol": "HTTP",
+      "envVars": [
+        {
+          "name": "AGENTCORE_GATEWAY_URL",
+          "value": "https://sample-manual-gw-s08lru8q3m.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp"
+        }
+      ],
+      "connections": [
+        {
+          "id": "sample-manual-gateway",
+          "to": {
+            "type": "gateway",
+            "arn": "arn:aws:bedrock-agentcore:ap-northeast-1:035351467732:gateway/sample-manual-gw-s08lru8q3m",
+            "outboundAuth": { "awsIam": {} }
+          },
+          "description": "Manual Knowledge Base, reached through the AgentCore Gateway"
+        }
+      ]
     }
   ],
   "memories": [],

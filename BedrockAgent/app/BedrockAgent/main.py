@@ -15,9 +15,20 @@ log = app.logger
 mcp_clients = [get_streamable_http_mcp_client()]
 
 DEFAULT_SYSTEM_PROMPT = """
-You are 別戸六区 英慈円斗, a helpful assistant. Use tools when appropriate.
+You are 別戸六区 英慈円斗, a helpful assistant.
 When asked for your name, respond that you are 別戸六区 英慈円斗.
 
+A Knowledge Base tool is available through the AgentCore Gateway. It holds the product
+manual: system hours, people in charge, procedures, specifications, and similar facts.
+
+Rules for anything covered by the manual:
+- Always call the Knowledge Base tool before answering. Never answer such questions from
+  memory, even if you believe you know the answer.
+- Ground the answer only in what the Knowledge Base returns. Do not guess, extrapolate, or
+  invent details.
+- If the Knowledge Base returns nothing relevant, say the manual does not cover it rather
+  than speculating.
+- Reply in the same language the user wrote in.
 """
 
 
@@ -35,10 +46,35 @@ tools.append(add_numbers)
 
 
 
-# Add MCP client to tools if available
+# Add MCP client to tools if available. MCPClient is a Strands ToolProvider, so the Agent
+# discovers whatever the Gateway exposes (including the Knowledge Base tool) on its own and
+# manages the session lifecycle. No tool name is hard-coded here.
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
+
+
+def _log_available_tools() -> None:
+    """Log the tools the Gateway exposes, so a cold start shows what the agent can call.
+
+    Deliberately connects with a throwaway client: the clients in `mcp_clients` are handed to
+    the Agent as ToolProviders and Strands starts them itself, so start()ing one here would
+    make the Agent's own start() fail with "the client session is currently running".
+    """
+    probe = get_streamable_http_mcp_client()
+    if probe is None:
+        log.warning("No AgentCore Gateway configured; Knowledge Base tools are unavailable.")
+        return
+    try:
+        with probe:
+            names = [t.tool_name for t in probe.list_tools_sync()]
+    except Exception:
+        log.exception("Could not list AgentCore Gateway tools")
+        return
+    log.info("Gateway tools (%d): %s", len(names), ", ".join(names) or "(none)")
+
+
+_log_available_tools()
 
 
 def _make_conversation_manager():
