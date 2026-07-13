@@ -72,15 +72,22 @@ get_or_create_agent = agent_factory()
 
 def _extract_prompt(payload: dict):
     """Accept harness-style messages[], tool_results[], or plain prompt string payloads."""
-    if "messages" in payload:
-        return payload["messages"]
+    # Prefer the current turn's prompt. genU always includes an empty
+    # messages: [] on the first request, so checking messages first would
+    # return [] and drop the actual user input.
+    prompt = payload.get("prompt")
+    if prompt:
+        return prompt
+    messages = payload.get("messages")
+    if messages:
+        return messages
     if "tool_results" in payload:
         return [{"role": "user", "content": [{"toolResult": {
             "toolUseId": tr["toolUseId"],
             "status": tr.get("status", "success"),
             "content": tr.get("content", []),
         }} for tr in payload["tool_results"]]}]
-    return payload.get("prompt", "")
+    return ""
 
 
 def _has_inline_function_call(messages) -> bool:
@@ -137,7 +144,11 @@ def _build_genu_response(message: str, session_id: str, citations: list, tool_ex
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
-    session_id = payload.get("sessionId") or getattr(context, 'session_id', 'default-session')
+    session_id = (
+        payload.get("session_id")
+        or payload.get("sessionId")
+        or getattr(context, 'session_id', 'default-session')
+    )
     user_id = payload.get("userId")
     metadata = payload.get("metadata", {})
     if user_id or metadata:
@@ -146,26 +157,14 @@ async def invoke(payload, context):
     agent = get_or_create_agent(session_id)
     prompt = _extract_prompt(payload)
 
-    message_parts: list[str] = []
-    tool_executions: list[dict] = []
-    citations: list[dict] = []
-
     try:
+        # Stream raw Strands events straight through. genU renders the
+        # contentBlockDelta text as-is, so wrapping the reply in a custom
+        # {"message": ...} envelope would show up as raw JSON in the chat.
+        # This matches genU's own generic runtime (yield chunk passthrough).
         async for event in agent.stream_async(prompt):
-            if not isinstance(event, dict):
-                continue
-            text = _extract_text(event)
-            if text:
-                message_parts.append(text)
-            if event.get("type") == "tool_result":
-                tool_result = event.get("tool_result")
-                if tool_result is not None:
-                    tool_executions.append({
-                        "toolUseId": getattr(tool_result, "toolUseId", ""),
-                        "name": getattr(tool_result, "name", ""),
-                        "status": "success" if event.get("exception") is None else "error",
-                        "content": str(getattr(tool_result, "content", "")),
-                    })
+            if isinstance(event, dict) and "event" in event:
+                yield event
     except Exception as exc:
         log.exception("Agent invocation failed")
         yield {
@@ -173,21 +172,6 @@ async def invoke(payload, context):
             "message": str(exc),
         }
         return
-
-    response_text = _build_genu_response(
-        message="".join(message_parts),
-        session_id=session_id,
-        citations=citations,
-        tool_executions=tool_executions,
-    )
-    yield {
-        "event": {
-            "contentBlockDelta": {
-                "delta": {"text": response_text}
-            }
-        }
-    }
-    yield {"event": {"contentBlockStop": {}}}
 
 
 if __name__ == "__main__":
