@@ -1,3 +1,17 @@
 {
-  "targets": {}
+  "targets": {
+    "dev": {
+      "resources": {
+        "runtimes": {
+          "BedrockAgent": {
+            "runtimeId": "BedrockAgent_BedrockAgent-052O95DjiR",
+            "runtimeArn": "arn:aws:bedrock-agentcore:ap-northeast-1:035351467732:runtime/BedrockAgent_BedrockAgent-052O95DjiR",
+            "roleArn": "arn:aws:iam::035351467732:role/AgentCore-BedrockAgent-de-ApplicationAgentBedrockAg-tvoPFTRbZcWS"
+          }
+        },
+        "stackName": "AgentCore-BedrockAgent-dev",
+        "deployHash": "24e6faba2e99db05"
+      }
+    }
+  }
 }

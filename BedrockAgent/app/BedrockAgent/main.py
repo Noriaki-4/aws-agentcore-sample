@@ -108,13 +108,29 @@ def _is_inline_function_call(event: dict) -> bool:
 
 def _extract_text(event: Any) -> str:
     if isinstance(event, dict):
-        data = event.get("data")
-        if isinstance(data, str):
-            return data
+        chunk = event.get("event")
+        if isinstance(chunk, dict):
+            delta = chunk.get("contentBlockDelta", {}).get("delta", {})
+            text = delta.get("text")
+            if text:
+                return text
         text = event.get("text")
         if isinstance(text, str):
             return text
     return ""
+
+
+
+def _build_genu_response(message: str, session_id: str, citations: list, tool_executions: list) -> str:
+    return json.dumps(
+        {
+            "message": message,
+            "sessionId": session_id,
+            "citations": citations,
+            "toolExecutions": tool_executions,
+        },
+        ensure_ascii=False,
+    )
 
 
 @app.entrypoint
@@ -158,13 +174,20 @@ async def invoke(payload, context):
         }
         return
 
-    response = {
-        "message": "".join(message_parts),
-        "sessionId": session_id,
-        "citations": citations,
-        "toolExecutions": tool_executions,
+    response_text = _build_genu_response(
+        message="".join(message_parts),
+        session_id=session_id,
+        citations=citations,
+        tool_executions=tool_executions,
+    )
+    yield {
+        "event": {
+            "contentBlockDelta": {
+                "delta": {"text": response_text}
+            }
+        }
     }
-    yield response
+    yield {"event": {"contentBlockStop": {}}}
 
 
 if __name__ == "__main__":

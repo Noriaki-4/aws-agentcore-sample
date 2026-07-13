@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "name": "dev",
+    "description": "Development deployment target",
+    "account": "035351467732",
+    "region": "ap-northeast-1"
+  }
+]
