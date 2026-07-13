@@ -2,6 +2,7 @@ from typing import Any
 from collections import OrderedDict
 from strands import Agent, tool
 import asyncio
+import json
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -105,26 +106,65 @@ def _is_inline_function_call(event: dict) -> bool:
 
 
 
+def _extract_text(event: Any) -> str:
+    if isinstance(event, dict):
+        data = event.get("data")
+        if isinstance(data, str):
+            return data
+        text = event.get("text")
+        if isinstance(text, str):
+            return text
+    return ""
+
+
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
+    session_id = payload.get("sessionId") or getattr(context, 'session_id', 'default-session')
+    user_id = payload.get("userId")
+    metadata = payload.get("metadata", {})
+    if user_id or metadata:
+        log.info(f"sessionId={session_id} userId={user_id} metadata={metadata}")
 
-    session_id = getattr(context, 'session_id', 'default-session')
     agent = get_or_create_agent(session_id)
-
     prompt = _extract_prompt(payload)
 
+    message_parts: list[str] = []
+    tool_executions: list[dict] = []
+    citations: list[dict] = []
 
-    async for event in agent.stream_async(
-        prompt,
-    ):
-        if not isinstance(event, dict) or "event" not in event:
-            continue
-        cbs = event["event"].get("contentBlockStart")
-        if cbs is not None and not cbs.get("start"):
-            continue
-        yield event
+    try:
+        async for event in agent.stream_async(prompt):
+            if not isinstance(event, dict):
+                continue
+            text = _extract_text(event)
+            if text:
+                message_parts.append(text)
+            if event.get("type") == "tool_result":
+                tool_result = event.get("tool_result")
+                if tool_result is not None:
+                    tool_executions.append({
+                        "toolUseId": getattr(tool_result, "toolUseId", ""),
+                        "name": getattr(tool_result, "name", ""),
+                        "status": "success" if event.get("exception") is None else "error",
+                        "content": str(getattr(tool_result, "content", "")),
+                    })
+    except Exception as exc:
+        log.exception("Agent invocation failed")
+        yield {
+            "errorCode": "INTERNAL_ERROR",
+            "message": str(exc),
+        }
+        return
+
+    response = {
+        "message": "".join(message_parts),
+        "sessionId": session_id,
+        "citations": citations,
+        "toolExecutions": tool_executions,
+    }
+    yield response
 
 
 if __name__ == "__main__":
